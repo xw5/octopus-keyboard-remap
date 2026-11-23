@@ -46,7 +46,7 @@ git clone https://github.com/xw5/octopus-keyboard-remap.git
 cd octopus-keyboard-remap
 build.bat build      # 编译 bin\OctopusKeyRemap.exe（含版本信息/manifest）
 build.bat test       # 决策引擎断言测试
-build.bat release    # 额外打包 release\OctopusKeyRemap-v0.2.1-win64.zip
+build.bat release    # 额外打包 release\OctopusKeyRemap-v1.0.0-win64.zip
 ```
 
 也可用 Lazarus IDE 直接打开 `octopusremap.lpi` 构建（`C:\lazarus\lazbuild.exe -B octopusremap.lpi`），要求 Lazarus 4.x + FPC 3.2.2（IDE 构建的 exe 不含版本信息资源）。
@@ -132,7 +132,7 @@ git clone https://github.com/xw5/octopus-keyboard-remap.git
 cd octopus-keyboard-remap
 build.bat build      # produces bin\OctopusKeyRemap.exe (versioninfo + manifest)
 build.bat test       # decision-engine assertion tests
-build.bat release    # also packages release\OctopusKeyRemap-v0.2.1-win64.zip
+build.bat release    # also packages release\OctopusKeyRemap-v1.0.0-win64.zip
 ```
 
 Alternatively open `octopusremap.lpi` in the Lazarus IDE (`C:\lazarus\lazbuild.exe -B octopusremap.lpi`); requires Lazarus 4.x + FPC 3.2.2 (IDE builds lack the versioninfo resource).
