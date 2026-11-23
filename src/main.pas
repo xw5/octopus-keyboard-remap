@@ -149,6 +149,7 @@ begin
   capDst.Top := 74;
   capDst.Width := 250;
   capDst.Height := 40;
+  capDst.AllowMods := False;   // target is a plain key: record on first press
 
   capRec := TComboCapture.Create(Self);
   capRec.Parent := Self;
@@ -187,16 +188,19 @@ begin
   cbDisable.Caption := S(SID_DISABLE_THIS);
   cbDisable.OnChange := @DisableChanged;
 
+  { undo/clear only act on the combo recorder, so they sit next to the
+    target controls: the row cbDisable uses in single mode is free when
+    they are visible (combo mode hides cbDisable) }
   btnDelLast := TSpeedButton.Create(Self);
   btnDelLast.Parent := Self;
-  btnDelLast.SetBounds(10, 188, 80, 28);
+  btnDelLast.SetBounds(110, 152, 80, 28);
   btnDelLast.Caption := S(SID_REC_UNDO);
   btnDelLast.OnClick := @DelLastClicked;
   btnDelLast.Visible := False;
 
   btnClear := TSpeedButton.Create(Self);
   btnClear.Parent := Self;
-  btnClear.SetBounds(100, 188, 80, 28);
+  btnClear.SetBounds(200, 152, 80, 28);
   btnClear.Caption := S(SID_REC_CLEAR);
   btnClear.OnClick := @ClearClicked;
   btnClear.Visible := False;
@@ -252,22 +256,25 @@ end;
 
 { manual picking: the list-based path for keys that cannot be recorded
   (a broken key, or Esc, which capture uses to finish); results land in
-  the same capture boxes, the rest of the flow is untouched }
+  the same capture boxes, the rest of the flow is untouched. The source
+  box allows modifier combos, the target stays a plain key. }
 procedure TEditRuleForm.PickSrcClicked(Sender: TObject);
 var
   vk, sc: Word;
   ext: Boolean;
+  mods: Word;
 begin
-  if PickKeyDialog(vk, sc, ext) then
-    capSrc.SetKey(vk, sc, ext);
+  if PickKeyDialog(vk, sc, ext, True, mods) then
+    capSrc.SetKeyMods(vk, sc, ext, mods);
 end;
 
 procedure TEditRuleForm.PickDstClicked(Sender: TObject);
 var
   vk, sc: Word;
   ext: Boolean;
+  mods: Word;
 begin
-  if PickKeyDialog(vk, sc, ext) then
+  if PickKeyDialog(vk, sc, ext, False, mods) then
     capDst.SetKey(vk, sc, ext);
 end;
 
@@ -314,6 +321,7 @@ begin
   n.SrcMouse := 0;
   n.App := FRule.App;
   capSrc.GetKey(n.SrcVK, n.SrcSC, n.SrcExt);
+  n.SrcMods := capSrc.GetMods;
   if cbCombo.Checked then
   begin
     n.Kind := RK_COMBO;
@@ -331,7 +339,7 @@ begin
     else
       capDst.GetKey(n.DstVK, n.DstSC, n.DstExt);
   end;
-  if RemapSrcTaken(n.SrcVK, n.SrcExt, FEditingIdx) then
+  if RemapSrcTaken(n.SrcVK, n.SrcExt, n.SrcMods, FEditingIdx) then
   begin
     ShowMessage(S(SID_MSG_DUP_SRC));
     Exit;
@@ -352,7 +360,7 @@ begin
   cbCombo.Checked := rule.Kind = RK_COMBO;
   ComboChanged(nil);   // visibility must match even when Checked was unchanged
   if rule.SrcVK <> 0 then
-    capSrc.SetKey(rule.SrcVK, rule.SrcSC, rule.SrcExt);
+    capSrc.SetKeyMods(rule.SrcVK, rule.SrcSC, rule.SrcExt, rule.SrcMods);
   if rule.Kind = RK_COMBO then
     capRec.SetSteps(rule.Combo)
   else if (rule.Kind = RK_KEY) and (rule.DstVK = 0) and (editingIdx >= 0) then
@@ -556,7 +564,8 @@ begin
   for i := 0 to RemapRuleCount - 1 do
   begin
     r := RemapRuleAt(i);
-    Grid.Cells[COL_SRC, i + 1] := KeyNameOf(r.SrcVK, r.SrcSC, r.SrcExt);
+    Grid.Cells[COL_SRC, i + 1] := ModsPrefix(r.SrcMods) +
+      KeyNameOf(r.SrcVK, r.SrcSC, r.SrcExt);
     if r.Kind = RK_KEY then
     begin
       if r.DstVK = 0 then

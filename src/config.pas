@@ -65,6 +65,7 @@ begin
   r.SrcVK    := o.Get('srcVK', 0);
   r.SrcSC    := o.Get('srcSC', 0);
   r.SrcExt   := o.Get('srcExt', False);
+  r.SrcMods  := o.Get('srcMods', 0);   // absent = legacy plain source
   r.Kind     := o.Get('kind', RK_KEY);
   r.DstVK    := o.Get('dstVK', 0);
   r.DstSC    := o.Get('dstSC', 0);
@@ -158,6 +159,8 @@ begin
   o.Add('srcVK', r.SrcVK);
   o.Add('srcSC', r.SrcSC);
   o.Add('srcExt', r.SrcExt);
+  if r.SrcMods <> 0 then
+    o.Add('srcMods', r.SrcMods);   // omit the plain-source default
   o.Add('kind', r.Kind);
   o.Add('dstVK', r.DstVK);
   o.Add('dstSC', r.DstSC);

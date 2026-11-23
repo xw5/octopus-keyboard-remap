@@ -175,9 +175,9 @@ begin
   { T10 duplicate source detection }
   ResetEngine;
   RemapAddRule(KeyRule(VK_CAPITAL, VK_ESCAPE));
-  Check(RemapSrcTaken(VK_CAPITAL, False, -1), 'T10 src reported taken');
-  Check(not RemapSrcTaken(VK_CAPITAL, True, -1), 'T10 ext variant free');
-  Check(not RemapSrcTaken(VK_CAPITAL, False, 0), 'T10 skipIdx excludes');
+  Check(RemapSrcTaken(VK_CAPITAL, False, 0, -1), 'T10 src reported taken');
+  Check(not RemapSrcTaken(VK_CAPITAL, True, 0, -1), 'T10 ext variant free');
+  Check(not RemapSrcTaken(VK_CAPITAL, False, 0, 0), 'T10 skipIdx excludes');
 
   { T11 flush collects and clears pending holds }
   ResetEngine;
@@ -240,6 +240,114 @@ begin
   RemapAddRule(rule);
   Check(RemapDecideKb(VK_F5, False, True).Action = RA_PASS,
     'T17 text rule passes');
+
+  { T18 combo source Ctrl+A -> X: fires only with exactly Ctrl held,
+    and the injected target is wrapped in suppress/restore steps }
+  ResetEngine;
+  rule := KeyRule(Ord('A'), Ord('X'));
+  rule.SrcMods := MODB_CONTROL;
+  RemapAddRule(rule);
+  Check(RemapDecideKb(Ord('A'), False, True).Action = RA_PASS,
+    'T18 source alone does not fire');
+  RemapDecideKb(Ord('A'), False, False);
+  Check(RemapDecideKb(VK_LSHIFT, False, True).Action = RA_PASS,
+    'T18 shift down passes');
+  Check(RemapDecideKb(Ord('A'), False, True).Action = RA_PASS,
+    'T18 wrong modifier does not fire');
+  RemapDecideKb(Ord('A'), False, False);
+  RemapDecideKb(VK_LSHIFT, False, False);
+  Check(RemapDecideKb(VK_LCONTROL, False, True).Action = RA_PASS,
+    'T18 ctrl down passes');
+  r := RemapDecideKb(Ord('A'), False, True);
+  Check((r.Action = RA_KEY) and (r.VK = Ord('X')) and r.Down,
+    'T18 Ctrl+A fires X');
+  Check((Length(r.PreSteps) = 1) and (r.PreSteps[0].VK = VK_LCONTROL) and
+    (not r.PreSteps[0].IsDown), 'T18 suppress step releases Ctrl');
+  Check((Length(r.PostSteps) = 1) and (r.PostSteps[0].VK = VK_LCONTROL) and
+    r.PostSteps[0].IsDown, 'T18 restore step re-asserts Ctrl');
+  r := RemapDecideKb(Ord('A'), False, False);
+  Check((r.Action = RA_KEY) and (r.VK = Ord('X')) and (not r.Down),
+    'T18 up pairs while Ctrl still held');
+  Check(RemapDecideKb(VK_LCONTROL, False, False).Action = RA_PASS,
+    'T18 ctrl up passes');
+
+  { T19 modifier dropped before the source release: LastRule keeps the
+    pairing, the target still gets its up and nothing sticks }
+  ResetEngine;
+  rule := KeyRule(Ord('A'), Ord('X'));
+  rule.SrcMods := MODB_CONTROL;
+  RemapAddRule(rule);
+  RemapDecideKb(VK_LCONTROL, False, True);
+  RemapDecideKb(Ord('A'), False, True);       // fire
+  RemapDecideKb(VK_LCONTROL, False, False);   // Ctrl released first
+  r := RemapDecideKb(Ord('A'), False, False); // then the source
+  Check((r.Action = RA_KEY) and (r.VK = Ord('X')) and (not r.Down),
+    'T19 late source up still releases the target');
+  Check(Length(r.PreSteps) = 0, 'T19 no suppress once the modifier is gone');
+  RemapCollectReleases(rel);
+  Check(Length(rel) = 0, 'T19 no virtual hold left');
+
+  { T20 legacy plain rule keeps firing with modifiers held, no suppress }
+  ResetEngine;
+  RemapAddRule(KeyRule(Ord('A'), Ord('Y')));
+  RemapDecideKb(VK_LCONTROL, False, True);
+  r := RemapDecideKb(Ord('A'), False, True);
+  Check((r.Action = RA_KEY) and (r.VK = Ord('Y')),
+    'T20 plain rule ignores held modifiers');
+  Check(Length(r.PreSteps) = 0, 'T20 plain rule injects no suppress steps');
+  RemapDecideKb(Ord('A'), False, False);
+  RemapDecideKb(VK_LCONTROL, False, False);
+
+  { T21 plain and combo sources on the same key coexist; exact wins }
+  ResetEngine;
+  RemapAddRule(KeyRule(Ord('A'), Ord('Y')));
+  rule := KeyRule(Ord('A'), Ord('X'));
+  rule.SrcMods := MODB_CONTROL;
+  RemapAddRule(rule);
+  RemapDecideKb(VK_LCONTROL, False, True);
+  r := RemapDecideKb(Ord('A'), False, True);
+  Check((r.Action = RA_KEY) and (r.VK = Ord('X')),
+    'T21 combo rule wins while Ctrl held');
+  RemapDecideKb(Ord('A'), False, False);
+  RemapDecideKb(VK_LCONTROL, False, False);
+  r := RemapDecideKb(Ord('A'), False, True);
+  Check((r.Action = RA_KEY) and (r.VK = Ord('Y')),
+    'T21 plain rule wins without Ctrl');
+  RemapDecideKb(Ord('A'), False, False);
+  Check(RemapSrcTaken(Ord('A'), False, 0, -1) and
+    RemapSrcTaken(Ord('A'), False, MODB_CONTROL, -1),
+    'T21 both modifier sets reported taken');
+  Check(not RemapSrcTaken(Ord('A'), False, MODB_SHIFT, -1),
+    'T21 a different modifier set stays free');
+
+  { T22 combo rule with a modifier source wraps the burst }
+  ResetEngine;
+  rule := ComboRule(VK_F5);
+  rule.SrcMods := MODB_CONTROL;
+  RemapAddRule(rule);
+  RemapDecideKb(VK_LCONTROL, False, True);
+  r := RemapDecideKb(VK_F5, False, True);
+  Check(r.Action = RA_STEPS, 'T22 burst fires with Ctrl held');
+  Check((Length(r.PreSteps) = 1) and (not r.PreSteps[0].IsDown),
+    'T22 suppress step before the burst');
+  Check((Length(r.PostSteps) = 1) and r.PostSteps[0].IsDown,
+    'T22 restore step after the burst');
+  RemapDecideKb(VK_F5, False, False);
+  RemapDecideKb(VK_LCONTROL, False, False);
+
+  { T23 disable rule with a modifier source blocks only on exact match }
+  ResetEngine;
+  rule := KeyRule(Ord('A'), 0);
+  rule.SrcMods := MODB_CONTROL;
+  RemapAddRule(rule);
+  RemapDecideKb(VK_LCONTROL, False, True);
+  Check(RemapDecideKb(Ord('A'), False, True).Action = RA_BLOCK,
+    'T23 disable swallows Ctrl+A');
+  RemapDecideKb(Ord('A'), False, False);
+  RemapDecideKb(VK_LCONTROL, False, False);
+  Check(RemapDecideKb(Ord('A'), False, True).Action = RA_PASS,
+    'T23 disable does not touch the bare key');
+  RemapDecideKb(Ord('A'), False, False);
 
   if Fails = 0 then
     writeln('ALL OK')

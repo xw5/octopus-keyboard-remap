@@ -11,6 +11,21 @@ unit capture;
   so "disabled and inert" is visible, not a surprise (the edit dialog
   disables this box when the rule blocks the key instead of mapping it).
 
+  As a source box it also records modifier combos: a modifier keydown while
+  armed only joins a live "Ctrl+..." prefix (the box stays armed - the old
+  behaviour of recording on the first keydown made the modifier itself the
+  capture, so combos could never be recorded). The prefix is tracked from
+  the modifier key events themselves, which arrive in order - immune to the
+  GetAsyncKeyState lag that makes sampling at record time miss a just-sent
+  synthetic chord. Arm time seeds the prefix from the OS once so modifiers
+  already held show up too. Releasing a modifier with nothing else held
+  records that modifier as the source, so plain remaps of modifier keys
+  keep working; that release is ignored when the modifier was already held
+  when the box was armed (never pressed here). The captured key's own bit
+  is excluded, so recording the Shift key itself does not read back as
+  "Shift+Shift". Boxes used as a plain target set AllowMods = False: they
+  keep the old record-on-first-keydown semantics and never show a prefix.
+
   TComboCapture: a click-to-arm recorder for key sequences. While armed it
   reads raw WM_KEYDOWN/UP and WM_SYSKEYDOWN/UP and records every press and
   release in real order, so plain chords (Ctrl+Shift+Esc) and macros
@@ -44,6 +59,10 @@ type
     FHas: Boolean;
     FVK, FSC: Word;
     FExt: Boolean;
+    FMods: Word;         // modifier bits OF the recorded value
+    FPrefix: Word;       // transient live combo prefix while armed only
+    FArmMods: Word;      // modifiers already held when the box was armed
+    FAllowMods: Boolean; // False: plain single-key box (target side)
     FOldIMC: THandle;   // IME context to restore on disarm
     FOnChange: TNotifyEvent;
   protected
@@ -57,9 +76,12 @@ type
     constructor Create(AOwner: TComponent); override;
     procedure Clear;
     procedure SetKey(VK, SC: Word; Ext: Boolean);
+    procedure SetKeyMods(VK, SC: Word; Ext: Boolean; Mods: Word);
     function GetKey(out VK, SC: Word; out Ext: Boolean): Boolean;
+    function GetMods: Word;
     property Armed: Boolean read FArmed;
     property HasKey: Boolean read FHas;
+    property AllowMods: Boolean read FAllowMods write FAllowMods;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 
@@ -92,6 +114,17 @@ implementation
 
 { ---------- TKeyCapture ---------- }
 
+{ OS-level held modifiers right now; the engine is suspended while a
+  capture dialog is open, so physical state is unfiltered }
+function SampleMods: Word;
+var
+  k: Integer;
+begin
+  Result := 0;
+  for k := 0 to MOD_VK_COUNT - 1 do
+    if (Word(GetAsyncKeyState(MOD_VKS[k])) and $8000) <> 0 then
+      Result := Result or MOD_BITS[k];
+end;
 
 constructor TKeyCapture.Create(AOwner: TComponent);
 begin
@@ -99,19 +132,28 @@ begin
   Width := 240;
   Height := 40;
   TabStop := True;
+  FAllowMods := True;   // source box default; the target box opts out
 end;
 
 procedure TKeyCapture.Clear;
 begin
   FHas := False;
+  FMods := 0;
+  FPrefix := 0;
   Invalidate;
 end;
 
 procedure TKeyCapture.SetKey(VK, SC: Word; Ext: Boolean);
 begin
+  SetKeyMods(VK, SC, Ext, 0);
+end;
+
+procedure TKeyCapture.SetKeyMods(VK, SC: Word; Ext: Boolean; Mods: Word);
+begin
   FVK := VK;
   FSC := SC;
   FExt := Ext;
+  FMods := Mods;
   FHas := True;
   Invalidate;
 end;
@@ -124,11 +166,17 @@ begin
   Result := FHas;
 end;
 
+function TKeyCapture.GetMods: Word;
+begin
+  Result := FMods;
+end;
+
 procedure TKeyCapture.Disarm;
 begin
   if FArmed then
   begin
     FArmed := False;
+    FPrefix := 0;   // the transient prefix dies with the arming session
     ImmAssociateContext(Self.Handle, FOldIMC);
   end;
 end;
@@ -138,11 +186,15 @@ begin
   inherited Click;
   SetFocus;
   if FArmed then
-    Disarm   // armed box clicked again: cancel, keep the previous value
+    Disarm   // armed box clicked again: cancel; the stored value survives
   else
   begin
     FOldIMC := ImmAssociateContext(Self.Handle, 0);
     FArmed := True;
+    // modifiers held before arming join the live prefix but can never be
+    // recorded as the captured key (their release was not a press here)
+    FPrefix := SampleMods;
+    FArmMods := FPrefix;
   end;
   Invalidate;
 end;
@@ -150,7 +202,7 @@ end;
 procedure TKeyCapture.DoExit;
 begin
   inherited DoExit;
-  Disarm;
+  Disarm;   // stored value (and its FMods) untouched by losing focus
   Invalidate;
 end;
 
@@ -175,7 +227,14 @@ begin
   Canvas.Brush.Style := bsClear;
   Canvas.Rectangle(1, 1, Width - 1, Height - 1);
   if FHas then
-    txt := KeyNameOf(FVK, FSC, FExt)
+  begin
+    if FArmed and (FPrefix <> 0) then
+      txt := ModsPrefix(FPrefix) + KeyNameOf(FVK, FSC, FExt)   // live preview
+    else
+      txt := ModsPrefix(FMods) + KeyNameOf(FVK, FSC, FExt)
+  end
+  else if FArmed and (FPrefix <> 0) then
+    txt := ModsPrefix(FPrefix) + '…'   // live combo prefix mid-recording
   else
     txt := S(SID_CAP_HINT);
   Canvas.Font := Font;
@@ -215,6 +274,25 @@ begin
         end;
         sc := Word((Msg.LParam shr 16) and $FF);
         ext := (Msg.LParam and $01000000) <> 0;
+        if FAllowMods and (ModBitOfVK(key) <> 0) then
+        begin
+          // modifier press: join the live prefix and stay armed - the
+          // combo finishes on the next non-modifier key, or a bare
+          // modifier is recorded when it comes back up alone
+          FPrefix := FPrefix or ModBitOfVK(key);
+          Invalidate;
+          Msg.Result := 0;
+          Exit;
+        end;
+        // plain key (or any key on a target box): record now. The prefix
+        // is the event-tracked live state - message order guarantees the
+        // chord's modifier keydown arrived before this one, so a just-sent
+        // synthetic Ctrl+A is captured as reliably as a physical hold
+        if not FAllowMods then
+          FMods := 0
+        else
+          FMods := FPrefix;
+        FMods := FMods and not ModBitOfVK(key);
         FVK := key;
         FSC := sc;
         FExt := ext;
@@ -225,6 +303,32 @@ begin
           FOnChange(Self);
         Msg.Result := 0;
         Exit;
+      end;
+    WM_KEYUP, WM_SYSKEYUP:
+      begin
+        key := Word(Msg.WParam);
+        if FAllowMods and (ModBitOfVK(key) <> 0) then
+        begin
+          FPrefix := FPrefix and not ModBitOfVK(key);
+          // a modifier released with nothing else held and no press before
+          // arming was tapped alone: record it as the captured key
+          if (FPrefix = 0) and ((ModBitOfVK(key) and FArmMods) = 0) then
+          begin
+            FVK := key;
+            FSC := Word((Msg.LParam shr 16) and $FF);
+            FExt := (Msg.LParam and $01000000) <> 0;
+            FMods := 0;
+            FHas := True;
+            Disarm;
+            Invalidate;
+            if FOnChange <> nil then
+              FOnChange(Self);
+          end
+          else
+            Invalidate;
+          Msg.Result := 0;
+          Exit;
+        end;
       end;
   end;
   inherited WndProc(Msg);

@@ -74,16 +74,31 @@ begin
       Result := 1;   // swallow without injecting
     RA_KEY:
       begin
+        // modifier-combo sources: suppress held rule modifiers so the
+        // target lands alone, re-assert them afterwards (empty for plain)
+        for i := 0 to High(r.PreSteps) do
+          InjectKey(r.PreSteps[i].VK, r.PreSteps[i].SC, r.PreSteps[i].Ext,
+            r.PreSteps[i].IsDown);
         InjectKey(r.VK, r.SC, r.Ext, r.Down);
+        for i := 0 to High(r.PostSteps) do
+          InjectKey(r.PostSteps[i].VK, r.PostSteps[i].SC, r.PostSteps[i].Ext,
+            r.PostSteps[i].IsDown);
         Result := 1; // swallow the original event
       end;
     RA_STEPS:
       begin
-        // replay the recorded burst; each injected event carries the
-        // INJECTED flag, so this hook never re-remaps them (no loop)
+        // replay the recorded burst, wrapped in the same modifier
+        // suppress/restore when the source is a combo; each injected event
+        // carries the INJECTED flag, so this hook never re-remaps them
+        for i := 0 to High(r.PreSteps) do
+          InjectKey(r.PreSteps[i].VK, r.PreSteps[i].SC, r.PreSteps[i].Ext,
+            r.PreSteps[i].IsDown);
         for i := 0 to High(r.Steps) do
           InjectKey(r.Steps[i].VK, r.Steps[i].SC, r.Steps[i].Ext,
             r.Steps[i].IsDown);
+        for i := 0 to High(r.PostSteps) do
+          InjectKey(r.PostSteps[i].VK, r.PostSteps[i].SC, r.PostSteps[i].Ext,
+            r.PostSteps[i].IsDown);
         Result := 1; // swallow the original event
       end;
   else

@@ -11,6 +11,7 @@
 ### 功能特性
 
 - **键 → 键映射** —— 任意键改到任意键，包括修饰键目标（如 `CapsLock → Left Ctrl`）与锁定键目标
+- **源键支持组合键** —— 源键可带 Ctrl / Alt / Shift / Win 修饰（如 `Ctrl+A → X`）：捕获框按住修饰键再按主键即录入，列表键选择器也有修饰键复选框；触发时自动「松开修饰键 → 注入目标 → 恢复修饰键」，目标键不带修饰落地，且松开修饰键前后源键的按下/抬起仍正确配对；匹配为精确匹配（按住 Ctrl+Alt 不会误触 `Ctrl+A` 规则），老规则（无修饰）行为不变，同一主键可同时定义 `A → Y` 与 `Ctrl+A → X`
 - **一键 → 多键（组合/序列）** —— 目标勾选「多个键」后按真实顺序录制一段按键（先按 Ctrl 再按 C = 组合键 `Ctrl+C`；`Ctrl+C` 后再 `Ctrl+V` = 序列宏），回放原样重放，录制结束自动补齐未松开的键
 - **禁用按键** —— 目标选「禁用」即让某个键彻底失效（如 Insert）
 - **点击捕获录入** —— 设置窗里点击捕获框再按物理键即可录入，无需从下拉列表里翻找；所有键（含 `Esc`、退格）都能直接录，再点一次捕获框取消；编辑对话框打开期间改键自动暂停，已映射的源键也能重新录入
@@ -26,13 +27,14 @@
 ### 已知限制
 
 - 组合/序列每按一次源键只回放一次（按住不连放）；步骤之间无延时
+- 源键组合中的修饰键按下瞬间会先照常透传（如先按 Win 仍会弹出开始菜单，之后 `Win+A → X` 的改键仍会触发）；修饰键本身被另一条规则改掉时自动跳过抑制/恢复，不会产生幽灵按键或卡键
 - 管理员权限运行的窗口（如任务管理器）收不到普通权限进程的钩子——需要通过托盘「以管理员身份重启」
 - UAC 安全桌面（输密码的蓝色界面）任何用户态工具都无法改键
 
 ### 使用方法
 
 1. 启动后托盘运行，左键托盘图标或右键「显示设置」打开设置窗
-2. 「添加」→ 点击左侧捕获框按 **源键** → 点击右侧捕获框按 **目标键**（或勾选「禁用该键」）→ 确定
+2. 「添加」→ 点击左侧捕获框按 **源键**（要组合键就按住 Ctrl/Alt/Shift/Win 再按主键）→ 点击右侧捕获框按 **目标键**（或勾选「禁用该键」）→ 确定
 3. 目标想改成一段组合/序列：勾选「**目标为多个键(组合/序列)**」→ 点击录制框按真实顺序按下并松开各键 → 再点一下录制框（或点别的控件）结束录制 → 误录的点「**删上一键**」回退 → 确定；坏键/不方便按的键可点录制框旁的「**选择…**」从列表多选，「上移/下移」调序，「同时按下(组合)」或「依次按下(序列)」两种模式，底部实时预览
 4. 点击列表行「启用」列可临时停用该条规则；双击行可编辑；「删除」移除
 5. 顶栏复选框整体启停改键；配置实时保存到 `%APPDATA%\OctopusKeyRemap\config.json`
@@ -46,7 +48,7 @@ git clone https://github.com/xw5/octopus-keyboard-remap.git
 cd octopus-keyboard-remap
 build.bat build      # 编译 bin\OctopusKeyRemap.exe（含版本信息/manifest）
 build.bat test       # 决策引擎断言测试
-build.bat release    # 额外打包 release\OctopusKeyRemap-v1.0.0-win64.zip
+build.bat release    # 额外打包 release\OctopusKeyRemap-v1.0.1-win64.zip
 ```
 
 也可用 Lazarus IDE 直接打开 `octopusremap.lpi` 构建（`C:\lazarus\lazbuild.exe -B octopusremap.lpi`），要求 Lazarus 4.x + FPC 3.2.2（IDE 构建的 exe 不含版本信息资源）。
@@ -71,8 +73,8 @@ tests/test_remap.lpr 决策引擎断言测试（修饰键共存/恢复/去重/fl
 ### 技术说明
 
 - 改键判定在钩子回调内**同步**完成（无消息中转，零额外延迟），命中即吞键（`return 1`）并注入目标键
-- 决策与执行分离：`remap.pas` 不调用任何输入 API，`tests/test_remap.lpr` 用 40 条断言覆盖修饰键生命周期与组合回放（虚拟/物理共存、硬件释放恢复、多重虚拟持有、锁定键防连发、步骤序列、捕获挂起）
-- 修饰键状态机见 `remap.pas` 头注释：`PhysCount/VirtCount/VirtSent/SrcHeld` 四张表；组合步骤为一次性按下/松开对，不进虚拟持有状态机
+- 决策与执行分离：`remap.pas` 不调用任何输入 API，`tests/test_remap.lpr` 用 62 条断言覆盖修饰键生命周期、组合回放与源键组合匹配（虚拟/物理共存、硬件释放恢复、多重虚拟持有、锁定键防连发、精确修饰匹配、抑制/恢复注入、LastRule 释放配对、步骤序列、捕获挂起）
+- 修饰键状态机见 `remap.pas` 头注释：`PhysCount/VirtCount/VirtSent/SrcHeld` 四张表；源键组合另跟踪 `ModHeld/ModPassed`（物理按住 + 确实透传给应用才参与抑制/恢复）与 `LastRule`（源键抬起与按下匹配同一条规则）；组合步骤为一次性按下/松开对，不进虚拟持有状态机
 - 「选择…」生成的组合与录制产物同构（按序 downs + 逆序 ups / 逐键 down+up），引擎与配置零改动
 - 编辑对话框打开期间改键引擎自动挂起（`RemapSetSuspended`），退出与停用时自动释放所有虚拟按住的键，杜绝「Ctrl 卡死」
 
@@ -99,6 +101,7 @@ MIT —— 见 [LICENSE](LICENSE)
 ### Features
 
 - **Key → key mapping** — including modifier targets (`CapsLock → Left Ctrl`) and lock-key targets
+- **Modifier-combo sources** — a source key can require Ctrl / Alt / Shift / Win held (e.g. `Ctrl+A → X`): hold the modifiers while pressing the key in the capture box, or use the modifier checkboxes in the key picker. On fire the engine injects "release modifiers → target → re-assert modifiers" so the target lands alone; source down/up still pair correctly even if a modifier is released in between. Matching is exact (Ctrl+Alt held never triggers a `Ctrl+A` rule); legacy modifier-less rules behave exactly as before, and the same base key can carry both `A → Y` and `Ctrl+A → X`
 - **One key → multiple keys (combo/sequence)** — check "multiple keys" as the target, then press the keys in their real order: Ctrl first, then C records the chord `Ctrl+C`; `Ctrl+C` followed by `Ctrl+V` records the macro. Replay is a faithful re-send, and keys still held at the end of the recording are released automatically
 - **Disable keys** — pick "disable" as the target to make a key inert
 - **Click-to-capture input** — click a capture box and press the physical key; every key is recordable (`Esc` and Backspace included), clicking the armed box again cancels; the engine suspends while an edit dialog is open, so already-mapped keys can be re-captured
@@ -114,13 +117,14 @@ MIT —— 见 [LICENSE](LICENSE)
 ### Known limitations
 
 - Combos fire once per physical press (holding the source does not repeat them); no inter-step delays
+- A combo's modifiers pass through at the instant they are pressed (pressing Win still opens the Start menu before `Win+A → X` fires); when a modifier is itself remapped by another rule, suppress/restore is skipped for it automatically, so no ghost keys or stuck modifiers
 - Elevated windows need the tool itself to run elevated (tray → "Restart as administrator")
 - The UAC secure desktop cannot be remapped by any user-mode tool
 
 ### Usage
 
 1. The app lives in the tray; left-click the icon to open settings
-2. "Add" → click the left capture box and press the **source key** → click the right box and press the **target key** (or check "Disable this key") → OK
+2. "Add" → click the left capture box and press the **source key** (hold Ctrl/Alt/Shift/Win for a combo source) → click the right box and press the **target key** (or check "Disable this key") → OK
 3. For a combo/sequence target: check "**Target is multiple keys**" → click the recorder, press and release the keys in their real order → click the recorder again (or any other control) to finish → mistakes can be removed with "**Undo last**" → OK; keys that are broken or awkward to press can be added via the recorder's "**Pick…**" list instead — multi-select, up/down to reorder, combo vs sequence mode, live preview
 4. Click a row's "On" cell to toggle that rule; double-click to edit
 5. The top checkbox toggles remapping globally; everything persists to `%APPDATA%\OctopusKeyRemap\config.json`
@@ -134,7 +138,7 @@ git clone https://github.com/xw5/octopus-keyboard-remap.git
 cd octopus-keyboard-remap
 build.bat build      # produces bin\OctopusKeyRemap.exe (versioninfo + manifest)
 build.bat test       # decision-engine assertion tests
-build.bat release    # also packages release\OctopusKeyRemap-v1.0.0-win64.zip
+build.bat release    # also packages release\OctopusKeyRemap-v1.0.1-win64.zip
 ```
 
 Alternatively open `octopusremap.lpi` in the Lazarus IDE (`C:\lazarus\lazbuild.exe -B octopusremap.lpi`); requires Lazarus 4.x + FPC 3.2.2 (IDE builds lack the versioninfo resource).
@@ -159,8 +163,8 @@ tests/test_remap.lpr decision-engine assertions (modifier lifecycles, dedupe, fl
 ### Technical notes
 
 - Remap decisions happen **synchronously** inside the hook callback (no message hop); hits are swallowed (`return 1`) and the mapped key injected immediately
-- Decision and execution are separated: `remap.pas` never calls input APIs; `tests/test_remap.lpr` covers modifier lifecycles and combo replay with 40 assertions
-- The modifier state machine (`PhysCount/VirtCount/VirtSent/SrcHeld`) is documented at the top of `remap.pas`; combo steps are one-shot down/up pairs and never enter it
+- Decision and execution are separated: `remap.pas` never calls input APIs; `tests/test_remap.lpr` covers modifier lifecycles, combo replay and modifier-combo source matching with 62 assertions
+- The modifier state machine (`PhysCount/VirtCount/VirtSent/SrcHeld`) is documented at the top of `remap.pas`; combo sources additionally track `ModHeld/ModPassed` (physically held AND actually passed through to apps — only those participate in suppress/restore) and `LastRule` (the source up pairs with the rule matched on the way down); combo steps are one-shot down/up pairs and never enter the hold state machine
 - "Pick…" produces the same step structure as recording (in-order downs + reverse ups, or per-key down+up), so the engine and config schema need no changes
 - The engine suspends while an edit dialog is open (`RemapSetSuspended`); on exit/disable all virtually held keys are released, so no "stuck Ctrl"
 

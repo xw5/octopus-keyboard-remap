@@ -67,6 +67,7 @@ const
   SID_PICK_NONE      = 56;  // OK with nothing selected
   SID_CAP_REC_ARMED  = 57;  // combo recorder placeholder while armed
   SID_REC_UNDO       = 58;  // combo recorder "undo last key" button
+  SID_PICK_MODS      = 59;  // pick dialog: modifier checkbox group caption
 
 function S(id: Integer): string;
 
@@ -103,7 +104,7 @@ begin
 end;
 
 const
-  LAST_SID = 58;
+  LAST_SID = 59;
 
   ZH: array[1..LAST_SID] of string = (
     'OctopusKeyRemap 设置',                        // 1
@@ -163,7 +164,8 @@ const
     '预览：',                                      // 55
     '请至少选择一个按键',                          // 56
     '录制中：再点一次结束，误录点「删上一键」',       // 57
-    '删上一键'                                     // 58
+    '删上一键',                                     // 58
+    '修饰键(按住)'                                  // 59
   );
 
   EN: array[1..LAST_SID] of string = (
@@ -224,7 +226,8 @@ const
     'Preview: ',
     'Select at least one key',
     'Recording: click again to end, "Undo last" helps',      // 57
-    'Undo last'                                              // 58
+    'Undo last',                                             // 58
+    'Modifiers (held)'                                       // 59
   );
 
 function S(id: Integer): string;

@@ -6,9 +6,11 @@ unit pick;
   mouse-driven. All controls
   are built in code like the rest of the app.
 
-  Single mode returns one key triple (VK/SC/Ext). Scancodes come from
-  MapVirtualKeyW at dialog open (fresh for the current layout); media keys
-  keep SC = 0 and inject by VK via the existing InjectKey fallback.
+  Single mode returns one key triple (VK/SC/Ext) plus, when AllowMods is
+  set, the modifier checkboxes: the picked key can require Ctrl/Alt/Shift/
+  Win held (source combos). Scancodes come from MapVirtualKeyW at dialog
+  open (fresh for the current layout); media keys keep SC = 0 and inject
+  by VK via the existing InjectKey fallback.
 
   Combo mode keeps an ordered selection list with up/down/remove buttons.
   "Press together" builds a chord: downs in the chosen order, then ups in
@@ -37,7 +39,8 @@ type
 procedure BuildPickSteps(const keys: array of TKeySel; chord: Boolean;
   out steps: TComboSteps);
 
-function PickKeyDialog(out VK, SC: Word; out Ext: Boolean): Boolean;
+function PickKeyDialog(out VK, SC: Word; out Ext: Boolean;
+  allowMods: Boolean; out Mods: Word): Boolean;
 function PickComboDialog(out steps: TComboSteps): Boolean;
 
 implementation
@@ -57,6 +60,7 @@ type
     constructor Create(AOwner: TComponent); override;
   private
     FSingle: Boolean;          // single-key pick vs ordered combo pick
+    FAllowMods: Boolean;       // single mode: show the modifier checkboxes
     FCatalog: array of TKeySel;
     FShown: array of Integer;  // catalog index per lbKeys row
     FSel: array of TKeySel;    // combo mode: the ordered selection
@@ -70,6 +74,8 @@ type
     lblPrev: TLabel;
     btnAdd, btnUp, btnDown, btnDel, btnClr: TButton;
     btnOk, btnCancel: TButton;
+    lblMods: TLabel;                    // modifier group caption
+    chkMods: array[0..3] of TCheckBox;  // Ctrl / Alt / Shift / Win
     procedure BuildCatalog;
     procedure BuildUI;
     procedure SetMode(single: Boolean);
@@ -87,6 +93,7 @@ type
     procedure UpdateSelButtons;
     procedure UpdatePreview;
     function ShownKey(out sel: TKeySel): Boolean;
+    function CheckedMods: Word;
   end;
 
 { ---------- step synthesis ---------- }
@@ -318,6 +325,34 @@ begin
   btnClr.Caption := S(SID_REC_CLEAR);
   btnClr.OnClick := @ClrClicked;
 
+  { modifier checkboxes: single mode only, shown when the caller allows
+    source combos; captions are key names so no translation is needed }
+  lblMods := TLabel.Create(Self);
+  lblMods.Parent := Self;
+  lblMods.Left := 12;
+  lblMods.Top := 262;
+  lblMods.Caption := S(SID_PICK_MODS);
+
+  chkMods[0] := TCheckBox.Create(Self);
+  chkMods[0].Parent := Self;
+  chkMods[0].SetBounds(12, 278, 46, 22);
+  chkMods[0].Caption := 'Ctrl';
+
+  chkMods[1] := TCheckBox.Create(Self);
+  chkMods[1].Parent := Self;
+  chkMods[1].SetBounds(60, 278, 44, 22);
+  chkMods[1].Caption := 'Alt';
+
+  chkMods[2] := TCheckBox.Create(Self);
+  chkMods[2].Parent := Self;
+  chkMods[2].SetBounds(106, 278, 54, 22);
+  chkMods[2].Caption := 'Shift';
+
+  chkMods[3] := TCheckBox.Create(Self);
+  chkMods[3].Parent := Self;
+  chkMods[3].SetBounds(162, 278, 48, 22);
+  chkMods[3].Caption := 'Win';
+
   rbChord := TRadioButton.Create(Self);
   rbChord.Parent := Self;
   rbChord.SetBounds(204, 252, 208, 22);
@@ -361,6 +396,8 @@ end;
 { single mode: a compact one-list dialog; combo mode: add the ordered
   selection column, the mode radios and the live preview }
 procedure TPickKeyForm.SetMode(single: Boolean);
+var
+  i: Integer;
 begin
   FSingle := single;
   if single then
@@ -381,7 +418,20 @@ begin
   begin
     ClientWidth := 224;
     ClientHeight := 356;
-    lbKeys.Height := 260;
+    if FAllowMods then
+    begin
+      lbKeys.Height := 214;   // make room for the modifier checkboxes
+      lblMods.Visible := True;
+      for i := 0 to 3 do
+        chkMods[i].Visible := True;
+    end
+    else
+    begin
+      lbKeys.Height := 260;
+      lblMods.Visible := False;
+      for i := 0 to 3 do
+        chkMods[i].Visible := False;
+    end;
     btnOk.SetBounds(12, 316, 96, 28);
     btnCancel.SetBounds(116, 316, 96, 28);
   end
@@ -390,6 +440,9 @@ begin
     ClientWidth := 424;
     ClientHeight := 380;
     lbKeys.Height := 220;
+    lblMods.Visible := False;
+    for i := 0 to 3 do
+      chkMods[i].Visible := False;
     btnOk.SetBounds(204, 340, 96, 28);
     btnCancel.SetBounds(316, 340, 96, 28);
   end;
@@ -580,14 +633,30 @@ begin
   lblPrev.Caption := S(SID_PICK_PREVIEW) + ComboSummary(steps);
 end;
 
+{ the four checkboxes -> MODB_* bitmask; order matches creation:
+  Ctrl, Alt, Shift, Win }
+function TPickKeyForm.CheckedMods: Word;
+const
+  BITS: array[0..3] of Word = (MODB_CONTROL, MODB_ALT, MODB_SHIFT, MODB_WIN);
+var
+  i: Integer;
+begin
+  Result := 0;
+  for i := 0 to 3 do
+    if chkMods[i].Checked then
+      Result := Result or BITS[i];
+end;
+
 { ---------- dialog entry points ---------- }
 
-function PickKeyDialog(out VK, SC: Word; out Ext: Boolean): Boolean;
+function PickKeyDialog(out VK, SC: Word; out Ext: Boolean;
+  allowMods: Boolean; out Mods: Word): Boolean;
 var
   dlg: TPickKeyForm;
 begin
   dlg := TPickKeyForm.Create(nil);
   try
+    dlg.FAllowMods := allowMods;
     dlg.SetMode(True);
     Result := dlg.ShowModal = mrOK;
     if Result then
@@ -595,6 +664,10 @@ begin
       VK := dlg.FPicked.VK;
       SC := dlg.FPicked.SC;
       Ext := dlg.FPicked.Ext;
+      if allowMods then
+        Mods := dlg.CheckedMods
+      else
+        Mods := 0;
     end;
   finally
     dlg.Free;

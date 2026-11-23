@@ -27,6 +27,10 @@ const
 function KeyNameOf(VK, SC: Word; Ext: Boolean): string;
 function IsModifierVK(VK: Integer): Boolean;
 
+{ canonical modifier-set prefix for display, e.g. 'Ctrl+Alt+' for
+  MODB_CONTROL or MODB_ALT; '' when no bits set }
+function ModsPrefix(Mods: Word): string;
+
 { compress a recorded step sequence into a display summary: the keys pressed
   since the last all-released point form a '+'-joined group, groups chain
   with ' -> '. Ctrl,C,C-up,Ctrl-up = "Ctrl+C"; Ctrl+C, Ctrl+V = the macro
@@ -152,6 +156,19 @@ begin
   else
     Result := False;
   end;
+end;
+
+function ModsPrefix(Mods: Word): string;
+begin
+  Result := '';
+  if (Mods and MODB_CONTROL) <> 0 then
+    Result := Result + 'Ctrl+';
+  if (Mods and MODB_ALT) <> 0 then
+    Result := Result + 'Alt+';
+  if (Mods and MODB_SHIFT) <> 0 then
+    Result := Result + 'Shift+';
+  if (Mods and MODB_WIN) <> 0 then
+    Result := Result + 'Win+';
 end;
 
 { ---------- combo summary ---------- }
