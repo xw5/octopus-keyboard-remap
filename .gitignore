@@ -1,0 +1,25 @@
+# ---- FPC / Lazarus build intermediates ----
+*.o
+*.ppu
+*.rsj
+*.compiled
+*.lps
+backup/
+
+# ---- build output (build.bat) ----
+lib/
+bin/
+release/
+
+# ---- executables & logs ----
+*.exe
+*.log
+
+# ---- local tooling ----
+.zcode/
+__pycache__/
+
+# ---- OS junk ----
+Thumbs.db
+Desktop.ini
+.DS_Store
