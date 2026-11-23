@@ -45,6 +45,28 @@ const
   SID_CAP_REC        = 34;  // combo recorder placeholder
   SID_REC_CLEAR      = 35;  // combo recorder clear button
   SID_MSG_NO_STEPS   = 36;
+  SID_BTN_PICK       = 37;  // "pick from list" button beside each capture box
+  SID_PICK_TITLE_SINGLE = 38;
+  SID_PICK_TITLE_COMBO  = 39;
+  SID_PICK_CAT_ALL   = 40;  // category filter: show everything
+  SID_PICK_CAT_ALPHA = 41;
+  SID_PICK_CAT_FUNC  = 42;
+  SID_PICK_CAT_MOD   = 43;
+  SID_PICK_CAT_NAV   = 44;
+  SID_PICK_CAT_NUM   = 45;
+  SID_PICK_CAT_MEDIA = 46;
+  SID_PICK_CAT_OEM   = 47;
+  SID_PICK_ADD       = 48;
+  SID_PICK_UP        = 49;
+  SID_PICK_DOWN      = 50;
+  SID_PICK_REMOVE    = 51;
+  SID_PICK_SELECTED  = 52;  // ordered selection list caption
+  SID_PICK_MODE_CHORD = 53;
+  SID_PICK_MODE_SEQ   = 54;
+  SID_PICK_PREVIEW   = 55;  // live ComboSummary prefix
+  SID_PICK_NONE      = 56;  // OK with nothing selected
+  SID_CAP_REC_ARMED  = 57;  // combo recorder placeholder while armed
+  SID_REC_UNDO       = 58;  // combo recorder "undo last key" button
 
 function S(id: Integer): string;
 
@@ -81,7 +103,7 @@ begin
 end;
 
 const
-  LAST_SID = 36;
+  LAST_SID = 58;
 
   ZH: array[1..LAST_SID] of string = (
     'OctopusKeyRemap 设置',                        // 1
@@ -117,9 +139,31 @@ const
     '源键',                                        // 31
     '目标键',                                      // 32
     '目标为多个键(组合/序列)',                      // 33
-    '点击此处录制按键序列，Esc 结束',               // 34
+    '点击此处录制按键序列，再点一次结束',          // 34
     '清空',                                        // 35
-    '请至少录制一个按键'                           // 36
+    '请至少录制一个按键',                          // 36
+    '选择…',                                       // 37
+    '选择按键',                                    // 38
+    '选择组合键',                                  // 39
+    '全部',                                        // 40
+    '字母/数字',                                   // 41
+    '功能键',                                      // 42
+    '修饰键',                                      // 43
+    '导航/控制键',                                 // 44
+    '数字键盘',                                    // 45
+    '多媒体键',                                    // 46
+    '标点符号',                                    // 47
+    '添加 →',                                      // 48
+    '上移',                                        // 49
+    '下移',                                        // 50
+    '移除',                                        // 51
+    '已选(按顺序)：',                              // 52
+    '同时按下(组合)',                              // 53
+    '依次按下(序列)',                              // 54
+    '预览：',                                      // 55
+    '请至少选择一个按键',                          // 56
+    '录制中：再点一次结束，误录点「删上一键」',       // 57
+    '删上一键'                                     // 58
   );
 
   EN: array[1..LAST_SID] of string = (
@@ -156,9 +200,31 @@ const
     'Source key',
     'Target key',
     'Target is multiple keys (combo/sequence)',
-    'Click here, record keys, Esc to finish',
+    'Click here to record; click again to end',              // 34
     'Clear',
-    'Record at least one key'
+    'Record at least one key',
+    'Pick…',
+    'Pick a key',
+    'Pick combo keys',
+    'All',
+    'Letters/Digits',
+    'Function keys',
+    'Modifiers',
+    'Navigation/Control',
+    'Numpad',
+    'Media keys',
+    'Punctuation',
+    'Add →',
+    'Up',
+    'Down',
+    'Remove',
+    'Selected (in order): ',
+    'Press together (combo)',
+    'Press in order (sequence)',
+    'Preview: ',
+    'Select at least one key',
+    'Recording: click again to end, "Undo last" helps',      // 57
+    'Undo last'                                              // 58
   );
 
 function S(id: Integer): string;

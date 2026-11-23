@@ -4,7 +4,9 @@ unit capture;
   WM_SYSKEYDOWN while armed so the scancode and the extended-key flag
   survive (LCL's OnKeyDown would drop both), and answers WM_GETDLGCODE with
   DLGC_WANTALLKEYS so Tab/Enter/Esc reach us instead of the dialog manager.
-  Esc cancels the capture; key-up events always pass through untouched -
+  Every key is recordable, Esc included: the control flow lives on the
+  mouse, clicking the armed box again (or leaving it) cancels without
+  changing the value. Key-up events always pass through untouched -
   swallowing one could stick a modifier. A disabled box is drawn washed-out
   so "disabled and inert" is visible, not a surprise (the edit dialog
   disables this box when the rule blocks the key instead of mapping it).
@@ -12,11 +14,14 @@ unit capture;
   TComboCapture: a click-to-arm recorder for key sequences. While armed it
   reads raw WM_KEYDOWN/UP and WM_SYSKEYDOWN/UP and records every press and
   release in real order, so plain chords (Ctrl+Shift+Esc) and macros
-  (Ctrl+C, Ctrl+V) both come out as faithful step lists. Esc or losing
-  focus finishes the burst; keys still held get their up events appended
-  (reverse press order) so replay never sticks them. Key-ups for keys that
-  were never seen down here (held since before arming) are swallowed
-  unrecorded to keep the steps balanced. Clear the steps to start over. }
+  (Ctrl+C, Ctrl+V) both come out as faithful step lists. Clicking the
+  armed box again or losing focus finishes the burst; keys still held get
+  their up events appended (reverse press order) so replay never sticks
+  them. Key-ups for keys that were never seen down here (held since before
+  arming) are swallowed unrecorded to keep the steps balanced. No key is
+  reserved for control - Esc, Backspace, Tab are all recordable; undo is
+  the edit dialog's non-focus-stealing button calling DeleteLastKey, so
+  it works mid-burst. Clear the steps to start over. }
 
 {$mode objfpc}{$H+}
 
@@ -74,10 +79,11 @@ type
     procedure FinishRecording;
     procedure AppendStep(VK, SC: Word; Ext, IsDown: Boolean);
   public
-    constructor Create(AOwner: TComponent); override;
+    constructor Create(AOwner: TComponent);
     procedure ClearSteps;
     procedure SetSteps(const ASteps: TComboSteps);
     procedure GetSteps(out ASteps: TComboSteps);
+    procedure DeleteLastKey;   // undo the most recently pressed key
     property Armed: Boolean read FArmed;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
@@ -131,9 +137,13 @@ procedure TKeyCapture.Click;
 begin
   inherited Click;
   SetFocus;
-  if not FArmed then
+  if FArmed then
+    Disarm   // armed box clicked again: cancel, keep the previous value
+  else
+  begin
     FOldIMC := ImmAssociateContext(Self.Handle, 0);
-  FArmed := True;
+    FArmed := True;
+  end;
   Invalidate;
 end;
 
@@ -203,13 +213,6 @@ begin
           Msg.Result := 0;
           Exit;
         end;
-        if key = VK_ESCAPE then
-        begin
-          Disarm;            // cancel capture, keep the previous value
-          Invalidate;
-          Msg.Result := 0;
-          Exit;
-        end;
         sc := Word((Msg.LParam shr 16) and $FF);
         ext := (Msg.LParam and $01000000) <> 0;
         FVK := key;
@@ -275,10 +278,51 @@ procedure TComboCapture.Click;
 begin
   inherited Click;
   SetFocus;
-  if not FArmed then
+  if FArmed then
+    FinishRecording   // armed box clicked again: end the burst
+  else
+  begin
     FOldIMC := ImmAssociateContext(Self.Handle, 0);
-  FArmed := True;   // re-arming appends to the recorded steps
+    FArmed := True;   // re-arming appends to the recorded steps
+  end;
   Invalidate;
+end;
+
+{ undo the most recently pressed key: drop its down, and its up too if it
+  was released already - pairs never overlap, so removing them leaves the
+  rest of the step list balanced whatever the interleaving was. A key
+  still held loses only its down, and FHeld is cleared so the physical
+  release gets swallowed unrecorded, like FinishRecording's leftovers. }
+procedure TComboCapture.DeleteLastKey;
+var
+  i, j, k: Integer;
+  vk: Word;
+  ext: Boolean;
+begin
+  i := High(FSteps);
+  while (i >= 0) and not FSteps[i].IsDown do
+    Dec(i);   // the last down is the last key pressed
+  if i < 0 then
+    Exit;
+  vk := FSteps[i].VK;
+  ext := FSteps[i].Ext;
+  j := i + 1;
+  while (j <= High(FSteps)) and not (not FSteps[j].IsDown and
+      (FSteps[j].VK = vk) and (FSteps[j].Ext = ext)) do
+    Inc(j);   // its up, if the key was released already
+  if j <= High(FSteps) then
+  begin
+    for k := j to High(FSteps) - 1 do
+      FSteps[k] := FSteps[k + 1];
+    SetLength(FSteps, Length(FSteps) - 1);
+  end;
+  for k := i to High(FSteps) - 1 do
+    FSteps[k] := FSteps[k + 1];
+  SetLength(FSteps, Length(FSteps) - 1);
+  FHeld[vk] := False;
+  Invalidate;
+  if FOnChange <> nil then
+    FOnChange(Self);
 end;
 
 procedure TComboCapture.DoExit;
@@ -330,6 +374,8 @@ begin
   Canvas.Rectangle(1, 1, Width - 1, Height - 1);
   if Length(FSteps) > 0 then
     txt := ComboSummary(FSteps)
+  else if FArmed then
+    txt := S(SID_CAP_REC_ARMED)   // how to finish is only visible mid-recording
   else
     txt := S(SID_CAP_REC);
   Canvas.Font := Font;
@@ -362,12 +408,6 @@ begin
     WM_KEYDOWN, WM_SYSKEYDOWN:
       begin
         key := Word(Msg.WParam);
-        if key = VK_ESCAPE then
-        begin
-          FinishRecording;   // Esc ends the burst and commits the steps
-          Msg.Result := 0;
-          Exit;
-        end;
         if (Msg.LParam and $40000000) <> 0 then   // auto-repeat: ignore
         begin
           Msg.Result := 0;

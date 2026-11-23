@@ -11,8 +11,8 @@ interface
 
 uses
   Windows, Messages, Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls,
-  Grids, Dialogs, Graphics, Menus, Registry, LCLType,
-  config, langstrings, keymap, remap, inject, hooks, capture;
+  Grids, Dialogs, Graphics, Menus, Registry, LCLType, Buttons,
+  config, langstrings, keymap, remap, inject, hooks, capture, pick;
 
 function ShellExecuteW(hWnd: HWND; Operation, FileName, Parameters,
   Directory: PWideChar; ShowCmd: Integer): HINST; stdcall;
@@ -27,13 +27,20 @@ type
     capSrc, capDst: TKeyCapture;
     capRec: TComboCapture;
     cbCombo, cbDisable: TCheckBox;
-    btnClear, btnOk, btnCancel: TButton;
+    btnOk, btnCancel: TButton;
+    // speed buttons: no focus steal, so clicking them never ends a burst
+    btnDelLast, btnClear: TSpeedButton;
+    btnPickSrc, btnPickDst, btnPickRec: TButton;
     FEditingIdx: Integer;
     FRule: TRule;
     procedure BuildUI;
     procedure ComboChanged(Sender: TObject);
     procedure DisableChanged(Sender: TObject);
     procedure ClearClicked(Sender: TObject);
+    procedure DelLastClicked(Sender: TObject);
+    procedure PickSrcClicked(Sender: TObject);
+    procedure PickDstClicked(Sender: TObject);
+    procedure PickRecClicked(Sender: TObject);
     procedure OkClicked(Sender: TObject);
   end;
 
@@ -102,7 +109,7 @@ begin
   inherited Create(AOwner);
   Position := poScreenCenter;
   BorderStyle := bsDialog;
-  ClientWidth := 380;
+  ClientWidth := 464;
   ClientHeight := 232;
   BuildUI;
 end;
@@ -123,6 +130,12 @@ begin
   capSrc.Top := 16;
   capSrc.Width := 250;
   capSrc.Height := 40;
+
+  btnPickSrc := TButton.Create(Self);
+  btnPickSrc.Parent := Self;
+  btnPickSrc.SetBounds(370, 16, 80, 40);
+  btnPickSrc.Caption := S(SID_BTN_PICK);
+  btnPickSrc.OnClick := @PickSrcClicked;
 
   lblD := TLabel.Create(Self);
   lblD.Parent := Self;
@@ -145,6 +158,19 @@ begin
   capRec.Height := 40;
   capRec.Visible := False;
 
+  btnPickDst := TButton.Create(Self);
+  btnPickDst.Parent := Self;
+  btnPickDst.SetBounds(370, 74, 80, 40);
+  btnPickDst.Caption := S(SID_BTN_PICK);
+  btnPickDst.OnClick := @PickDstClicked;
+
+  btnPickRec := TButton.Create(Self);
+  btnPickRec.Parent := Self;
+  btnPickRec.SetBounds(370, 74, 80, 40);
+  btnPickRec.Caption := S(SID_BTN_PICK);
+  btnPickRec.OnClick := @PickRecClicked;
+  btnPickRec.Visible := False;
+
   cbCombo := TCheckBox.Create(Self);
   cbCombo.Parent := Self;
   cbCombo.Left := 110;
@@ -161,11 +187,16 @@ begin
   cbDisable.Caption := S(SID_DISABLE_THIS);
   cbDisable.OnChange := @DisableChanged;
 
-  btnClear := TButton.Create(Self);
+  btnDelLast := TSpeedButton.Create(Self);
+  btnDelLast.Parent := Self;
+  btnDelLast.SetBounds(10, 188, 80, 28);
+  btnDelLast.Caption := S(SID_REC_UNDO);
+  btnDelLast.OnClick := @DelLastClicked;
+  btnDelLast.Visible := False;
+
+  btnClear := TSpeedButton.Create(Self);
   btnClear.Parent := Self;
-  btnClear.Left := 100;
-  btnClear.Top := 188;
-  btnClear.Width := 80;
+  btnClear.SetBounds(100, 188, 80, 28);
   btnClear.Caption := S(SID_REC_CLEAR);
   btnClear.OnClick := @ClearClicked;
   btnClear.Visible := False;
@@ -196,18 +227,56 @@ begin
   capDst.Visible := not m;
   capRec.Visible := m;
   cbDisable.Visible := not m;   // a combo target cannot "disable" the key
+  btnPickDst.Visible := not m;
+  btnPickRec.Visible := m;
+  btnDelLast.Visible := m;
   btnClear.Visible := m;
 end;
 
 procedure TEditRuleForm.DisableChanged(Sender: TObject);
 begin
   capDst.Enabled := not cbDisable.Checked;
+  btnPickDst.Enabled := not cbDisable.Checked;
   capDst.Invalidate;
 end;
 
 procedure TEditRuleForm.ClearClicked(Sender: TObject);
 begin
   capRec.ClearSteps;
+end;
+
+procedure TEditRuleForm.DelLastClicked(Sender: TObject);
+begin
+  capRec.DeleteLastKey;   // focus stays in the recorder, the burst continues
+end;
+
+{ manual picking: the list-based path for keys that cannot be recorded
+  (a broken key, or Esc, which capture uses to finish); results land in
+  the same capture boxes, the rest of the flow is untouched }
+procedure TEditRuleForm.PickSrcClicked(Sender: TObject);
+var
+  vk, sc: Word;
+  ext: Boolean;
+begin
+  if PickKeyDialog(vk, sc, ext) then
+    capSrc.SetKey(vk, sc, ext);
+end;
+
+procedure TEditRuleForm.PickDstClicked(Sender: TObject);
+var
+  vk, sc: Word;
+  ext: Boolean;
+begin
+  if PickKeyDialog(vk, sc, ext) then
+    capDst.SetKey(vk, sc, ext);
+end;
+
+procedure TEditRuleForm.PickRecClicked(Sender: TObject);
+var
+  steps: TComboSteps;
+begin
+  if PickComboDialog(steps) then
+    capRec.SetSteps(steps);
 end;
 
 procedure TEditRuleForm.OkClicked(Sender: TObject);

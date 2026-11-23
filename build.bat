@@ -9,6 +9,12 @@ set "WINDRES=C:\lazarus\fpc\3.2.2\bin\x86_64-win64\windres.exe"
 REM windres needs cpp (C preprocessor) from the same bin dir on PATH
 set "PATH=C:\lazarus\fpc\3.2.2\bin\x86_64-win64;%PATH%"
 
+REM ---- -gl line info bloats the exe to ~27MB (COFF debug sections);
+REM ---- release strips it (-Xs, ~3MB), dev builds keep -gl for crash.log.
+REM ---- Crash diagnosis of release exe: build.bat trace (-O- -gl trace exe)
+set "DBG=-gl"
+if /i "%~1"=="release" set "DBG=-Xs"
+
 if not exist "%FPC%" (
   echo ERROR: FPC not found at "%FPC%"
   exit /b 1
@@ -92,7 +98,7 @@ REM ---- Application icon -> res (ALL resources go through the .res path;
 REM ---- mixing {\$R .rc} and {\$R .res} breaks the PE resource directory)
 "%WINDRES%" -i src\appicon.rc -o res\appicon.res
 
-"%FPC%" -O2 -gl -Sh -WG -Fusrc -FUlib\x86_64-win64 -FEbin -oOctopusKeyRemap.exe ^
+"%FPC%" -O2 %DBG% -Sh -WG -Fusrc -FUlib\x86_64-win64 -FEbin -oOctopusKeyRemap.exe ^
   -FuC:\lazarus\lcl\units\x86_64-win64 ^
   -FuC:\lazarus\lcl\units\x86_64-win64\win32 ^
   -FuC:\lazarus\components\lazutils\lib\x86_64-win64 ^
